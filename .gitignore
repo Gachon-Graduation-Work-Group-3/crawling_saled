@@ -1,0 +1,12 @@
+__pycache__/
+*.py[cod]
+venv/
+
+cars_list.csv
+cars.csv
+test.csv
+
+.DS_Store
+
+.idea/
+.vscode/

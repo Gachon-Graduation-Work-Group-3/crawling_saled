@@ -2,11 +2,14 @@ __pycache__/
 *.py[cod]
 venv/
 
-cars_list.csv
 cars.csv
 test.csv
+
+extract_url.ipynb
+split_csv.ipynb
 
 .DS_Store
 
 .idea/
 .vscode/
+.ipynb_checkpoints/

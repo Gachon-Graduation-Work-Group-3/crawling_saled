@@ -7,7 +7,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 
 
-df = pd.read_csv('./results/cars_list4.csv')
+df = pd.read_csv('./results/cars_list.csv')
 
 
 headers = {
@@ -15,18 +15,19 @@ headers = {
 }
 
 # 데이터 컬럼 정의
-info = ["링크", "이름", "가격", "신차대비가격", "최초등록일",
-        "연식", "주행거리", "연료", "배기량", "색상", "설명글"]
-spec = ["엔진형식", "연비", "최고출력", "최대토크"]
+info = ["링크", "이름", "가격", "신차대비가격", "신차가격", "차량번호", "최초등록일", "조회수",
+        "연식", "주행거리", "연료", "배기량", "색상", "보증정보", "설명글"]
+spec = ["엔진형식", "연비", "최고출력", "최대토크", "차량중량"]
 appearances = ["선루프", "파노라마선루프"]
 interiors = ["열선시트(앞좌석)", "열선시트(뒷좌석)"]
 safeties = ["동승석에어백", "후측방경보", "후방센서", "전방센서", "후방카메라", "전방카메라", "어라운드뷰"]
 conveniences = ["열선핸들", "오토라이트", "크루즈컨트롤", "자동주차"]
 multimedia = ["네비게이션(순정)", "네비게이션(비순정)"]
 insurance = ["보험처리수", "소유자변경", "전손", "침수전손", "침수분손", "도난", "내차피해_횟수", "내차피해_금액", "타차가해_횟수", "타차가해_금액"]
-check = ["판금", "교환", "부식"]
+check = ["판금", "교환", "부식", "사고침수유무", "불법구조변경"]
+img = ['이미지']
 
-cols = info + spec + appearances + interiors + safeties + conveniences + multimedia + insurance + check
+cols = info + spec + appearances + interiors + safeties + conveniences + multimedia + insurance + check + img
 
 
 # 차량 데이터를 병렬로 처리하는 함수
@@ -61,9 +62,61 @@ def process_car(car):
     name = ut.find_class(car_summary, 'h2', 'title')
     feature_box = soup.find("div", class_="product-feature")
     percent = ut.find_class(feature_box, "span", "text")
+
+    #신차가격 추출
+    link_match = re.search(r'/cview/(\d+)/', url)
+    if link_match:
+        link_num = link_match.group(1)
+
+        link_newcar = f"https://m.bobaedream.co.kr/calculator/newCarCompare/cyber/{link_num}"
+
+            # 요청 (최대 3번 재시도)
+        for attempt in range(3):
+            try:
+                res_newcar = requests.get(link_newcar, headers=headers, timeout=10)
+                if response.status_code == 200:
+                    break
+            except requests.exceptions.RequestException as e:
+                time.sleep(5)
+
+        res_newcar.encoding = "utf-8"
+        soup_newcar = BeautifulSoup(res_newcar.text, "html.parser")
+
+        cost_tbl = soup_newcar.find("div", attrs={"class": "cost-table"})
+        price_newcar = cost_tbl.find("td").get_text() if cost_tbl else None
+        print(price_newcar)
+    else:
+        link_match = re.search(r'/mview/(\d+)/', url)
+        if link_match:
+            link_num = link_match.group(1)
+
+            link_newcar = f"https://m.bobaedream.co.kr/calculator/newCarCompare/mycar/{link_num}"
+
+            # 요청 (최대 3번 재시도)
+            for attempt in range(3):
+                try:
+                    res_newcar = requests.get(link_newcar, headers=headers, timeout=10)
+                    if response.status_code == 200:
+                        break
+                except requests.exceptions.RequestException as e:
+                    time.sleep(5)
+
+            res_newcar.encoding = "utf-8"
+            soup_newcar = BeautifulSoup(res_newcar.text, "html.parser")
+
+            cost_tbl = soup_newcar.find("div", attrs={"class": "cost-table"})
+            price_newcar = cost_tbl.find("td").get_text() if cost_tbl else None
+            print(price_newcar)
+        else:
+            print("No matching value found")
+            price_newcar = None
+
+    carnum = None
     article_header = soup.find("li", class_="date")
     regist = article_header.find("span", class_="text").get_text().split() if ut.isvalid(article_header) else None
-    
+    article_header2 = soup.find("li", class_="views")
+    views = article_header2.find("span", class_="text").get_text() if ut.isvalid(article_header2) else None
+
     # car_detail이 없는 경우가 있음
     car_detail = soup.find('article', class_='article-box article-information')
     if ut.isvalid(car_detail):
@@ -78,9 +131,9 @@ def process_car(car):
         fuel = None
         color = None
         amount = None
-    
+    guarn = None
     explain = soup.find("div", class_="content").get_text().strip() if ut.isvalid(soup.find("div", class_="content")) else None
-    res_info = [url, name, price, percent, regist, year, km, fuel, amount, color, explain]
+    res_info = [url, name, price, percent, price_newcar, carnum, regist, views, year, km, fuel, amount, color, guarn, explain]
 
 
     # spec
@@ -96,7 +149,8 @@ def process_car(car):
         max_pow = None
         max_tok = None
 
-    res_spec = [engin, effic, max_pow, max_tok]
+    weight = None
+    res_spec = [engin, effic, max_pow, max_tok, weight]
 
 
     #option
@@ -165,12 +219,15 @@ def process_car(car):
     #수리이력이 팝업 형식으로 되어 있어 bs4로는 추출 불가
     res_check = [None] * len(check)
 
-    return res_info + res_spec + res_options + res_insur + res_check
+    #이미지 None
+    res_img = [None] * len(img)
+
+    return res_info + res_spec + res_options + res_insur + res_check + res_img
 
 
 # 병렬 처리
 car_data = []
-with ThreadPoolExecutor(max_workers=10) as executor:  # 동시 10개의 스레드
+with ThreadPoolExecutor(max_workers=100) as executor:  # 동시 100개의 스레드
     results = list(executor.map(process_car, [car for _, car in df.iterrows()]))
 
 # 유효한 데이터만 필터링
@@ -178,4 +235,4 @@ car_data = [result for result in results if result is not None]
 
 # 결과 저장
 df = pd.DataFrame(data=car_data, columns=cols)
-df.to_csv('./results/saled_cars4.csv', index=False, encoding='utf-8-sig')
+df.to_csv('./results/saled_cars.csv', index=False, encoding='utf-8-sig')

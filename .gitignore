@@ -2,11 +2,15 @@ __pycache__/
 *.py[cod]
 venv/
 
+results/
+
 cars.csv
 test.csv
 
 extract_url.ipynb
 split_csv.ipynb
+check.ipynb
+check_duplicates.ipynb
 
 .DS_Store
 
